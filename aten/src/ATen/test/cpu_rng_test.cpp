@@ -79,6 +79,12 @@ Tensor normal_Tensor_Tensor(const Tensor& mean, const Tensor& std, Generator gen
   return at::native::templates::normal_impl<native::templates::cpu::NormalKernel, TestCPUGenerator>(mean, std, gen);
 }
 
+// ==================================================== Uniform =======================================================
+
+Tensor& uniform_(Tensor& self, double from, double to, Generator generator) {
+  return at::native::templates::uniform_impl_<native::templates::cpu::UniformKernel, TestCPUGenerator>(self, from, to, generator);
+}
+
 // ==================================================== Cauchy ========================================================
 
 Tensor& custom_rng_cauchy_(Tensor& self, double median, double sigma, Generator generator) {
@@ -123,6 +129,10 @@ class RNGTest : public ::testing::Test {
       .op(torch::RegisterOperators::options()
         .schema("aten::normal.Tensor_Tensor(Tensor mean, Tensor std, *, Generator? generator=None) -> Tensor")
         .impl_unboxedOnlyKernel<decltype(normal_Tensor_Tensor), &normal_Tensor_Tensor>(DispatchKey::CustomRNGKeyId))
+// ==================================================== Uniform =======================================================
+      .op(torch::RegisterOperators::options()
+        .schema("aten::uniform_(Tensor(a!) self, float from=0., float to=1., *, Generator? generator=None) -> (Tensor(a!))")
+        .impl_unboxedOnlyKernel<decltype(uniform_), &uniform_>(DispatchKey::CustomRNGKeyId))
 // ==================================================== Cauchy ========================================================
       .op(torch::RegisterOperators::options()
         .schema("aten::cauchy_(Tensor(a!) self, float median=0, float sigma=1, *, Generator? generator=None) -> Tensor(a!)")
@@ -258,6 +268,23 @@ TEST_F(RNGTest, Normal_Tensor_Tensor) {
 
   auto expected = torch::empty_like(actual);
   native::templates::cpu::normal_kernel(expected, mean, std, check_generator<TestCPUGenerator>(gen));
+
+  ASSERT_TRUE(torch::allclose(actual, expected));
+}
+
+// ==================================================== Uniform =======================================================
+
+TEST_F(RNGTest, Uniform) {
+  const auto from = -24.24;
+  const auto to = 42.42;
+  auto gen = at::make_generator<TestCPUGenerator>(42.0);
+
+  auto actual = torch::empty({3, 3});
+  actual.uniform_(from, to, gen);
+
+  auto expected = torch::empty_like(actual);
+  auto iter = TensorIterator::nullary_op(expected);
+  native::templates::cpu::uniform_kernel(iter, from, to, check_generator<TestCPUGenerator>(gen));
 
   ASSERT_TRUE(torch::allclose(actual, expected));
 }
